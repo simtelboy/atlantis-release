@@ -94,6 +94,7 @@ jobs:
         if: steps.naive.outputs.exists == 'false'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           TAG: ${{ steps.naive.outputs.tag }}
         run: |
           mkdir -p src/naive-apk

@@ -1,0 +1,145 @@
+name: Build Atlantis Android
+
+on:
+  schedule:
+    - cron: '23 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: atlantis-release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Find latest naiveproxy release
+        id: naive
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG=$(gh release view -R klzgrad/naiveproxy --json tagName -q .tagName)
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          if gh release view "atlantis-$TAG" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check out private source
+        if: steps.naive.outputs.exists == 'false'
+        uses: actions/checkout@v4
+        with:
+          repository: simtelboy/atlantis-android
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          submodules: recursive
+          path: src
+
+      - uses: actions/setup-java@v4
+        if: steps.naive.outputs.exists == 'false'
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - uses: android-actions/setup-android@v3
+        if: steps.naive.outputs.exists == 'false'
+        with:
+          packages: 'platform-tools'
+
+      - name: Install Android SDK/NDK
+        if: steps.naive.outputs.exists == 'false'
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;27.2.12479018" >/dev/null
+          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-go@v5
+        if: steps.naive.outputs.exists == 'false'
+        with:
+          go-version: '1.24'
+
+      - name: Build Xray-core AAR
+        if: steps.naive.outputs.exists == 'false'
+        working-directory: src
+        run: |
+          export PATH="$PATH:$(go env GOPATH)/bin"
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          gomobile init
+          mkdir -p app/libs
+          cd tools/xraywrapper
+          go mod tidy
+          gomobile bind -target=android/arm64,android/amd64 -androidapi 26 -o "$GITHUB_WORKSPACE/src/app/libs/xray.aar" .
+
+      - name: Build hev-socks5-tunnel
+        if: steps.naive.outputs.exists == 'false'
+        working-directory: src/third_party/hev-socks5-tunnel
+        run: |
+          "$ANDROID_NDK_HOME/ndk-build" \
+            NDK_PROJECT_PATH=. \
+            APP_BUILD_SCRIPT=Android.mk \
+            NDK_APPLICATION_MK=Application.mk \
+            APP_ABI="arm64-v8a x86_64" \
+            APP_PLATFORM=android-29
+          for abi in arm64-v8a x86_64; do
+            mkdir -p ../../app/src/main/jniLibs/$abi
+            cp libs/$abi/libhev-socks5-tunnel.so ../../app/src/main/jniLibs/$abi/
+          done
+
+      - name: Fetch naiveproxy plugins (${{ steps.naive.outputs.tag }})
+        if: steps.naive.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.naive.outputs.tag }}
+        run: |
+          mkdir -p src/naive-apk
+          gh release download -R klzgrad/naiveproxy "$TAG" \
+            --pattern 'naiveproxy-plugin-*-arm64-v8a.apk' --dir src/naive-apk --clobber
+          gh release download -R klzgrad/naiveproxy "$TAG" \
+            --pattern 'naiveproxy-plugin-*-x86_64.apk' --dir src/naive-apk --clobber
+          for abi in arm64-v8a x86_64; do
+            APK=$(ls src/naive-apk/*-${abi}.apk | head -1)
+            unzip -o "$APK" "lib/${abi}/libnaive.so" -d src/naive-extract
+            cp "src/naive-extract/lib/${abi}/libnaive.so" "src/app/src/main/jniLibs/${abi}/libnaive.so"
+            chmod +x "src/app/src/main/jniLibs/${abi}/libnaive.so"
+          done
+
+      - name: Set version from naiveproxy tag
+        if: steps.naive.outputs.exists == 'false'
+        working-directory: src
+        env:
+          TAG: ${{ steps.naive.outputs.tag }}
+        run: |
+          NAME=${TAG#v}
+          REV=${NAME##*-}
+          BASE=${NAME%-*}
+          CODE=$(echo "$BASE" | awk -F. '{printf "%d%03d%02d", $1, $2 % 1000, $3 % 100}')
+          CODE=$((10#$CODE * 100 + REV))
+          sed -i "s/versionCode = 1/versionCode = $CODE/" app/build.gradle.kts || true
+          sed -i "s/versionCode = 1/versionCode = $CODE/" app/build.gradle || true
+          sed -i "s/versionName = \"0.1.0\"/versionName = \"$TAG\"/" app/build.gradle.kts || true
+          sed -i "s/versionName = \"0.1.0\"/versionName = \"$TAG\"/" app/build.gradle || true
+
+      - name: Build APK
+        if: steps.naive.outputs.exists == 'false'
+        working-directory: src
+        env:
+          GRADLE_OPTS: -Dorg.gradle.daemon=false
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon --build-cache assembleDebug
+
+      - name: Publish release
+        if: steps.naive.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.naive.outputs.tag }}
+        run: |
+          APK=$(ls src/app/build/outputs/apk/debug/*.apk | head -1)
+          gh release create "atlantis-$TAG" "$APK" \
+            --title "Atlantis Android $TAG" \
+            --notes "Built from simtelboy/atlantis-android at naiveproxy $TAG. Debug-signed for direct installation."

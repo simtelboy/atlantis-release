@@ -31,7 +31,7 @@ jobs:
           fi
 
       - name: Check out private source
-        if: steps.naive.outputs.exists == 'false'
+        if: github.event_name == 'workflow_dispatch' || steps.naive.outputs.exists == 'false'
         uses: actions/checkout@v4
         with:
           repository: simtelboy/atlantis-android
@@ -40,31 +40,31 @@ jobs:
           path: src
 
       - uses: actions/setup-java@v4
-        if: steps.naive.outputs.exists == 'false'
+        if: github.event_name == 'workflow_dispatch' || steps.naive.outputs.exists == 'false'
         with:
           distribution: temurin
           java-version: '21'
           cache: gradle
 
       - uses: android-actions/setup-android@v3
-        if: steps.naive.outputs.exists == 'false'
+        if: github.event_name == 'workflow_dispatch' || steps.naive.outputs.exists == 'false'
         with:
           packages: 'platform-tools'
 
       - name: Install Android SDK/NDK
-        if: steps.naive.outputs.exists == 'false'
+        if: github.event_name == 'workflow_dispatch' || steps.naive.outputs.exists == 'false'
         run: |
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;27.2.12479018" >/dev/null
           echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
 
       - uses: actions/setup-go@v5
-        if: steps.naive.outputs.exists == 'false'
+        if: github.event_name == 'workflow_dispatch' || steps.naive.outputs.exists == 'false'
         with:
           go-version: '1.24'
 
       - name: Build Xray-core AAR
-        if: steps.naive.outputs.exists == 'false'
+        if: github.event_name == 'workflow_dispatch' || steps.naive.outputs.exists == 'false'
         working-directory: src
         run: |
           export PATH="$PATH:$(go env GOPATH)/bin"
@@ -76,7 +76,7 @@ jobs:
           gomobile bind -target=android/arm64,android/amd64 -androidapi 26 -o "$GITHUB_WORKSPACE/src/app/libs/xray.aar" .
 
       - name: Build hev-socks5-tunnel
-        if: steps.naive.outputs.exists == 'false'
+        if: github.event_name == 'workflow_dispatch' || steps.naive.outputs.exists == 'false'
         working-directory: src/third_party/hev-socks5-tunnel
         run: |
           "$ANDROID_NDK_HOME/ndk-build" \
@@ -91,7 +91,7 @@ jobs:
           done
 
       - name: Fetch naiveproxy plugins (${{ steps.naive.outputs.tag }})
-        if: steps.naive.outputs.exists == 'false'
+        if: github.event_name == 'workflow_dispatch' || steps.naive.outputs.exists == 'false'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
@@ -110,7 +110,7 @@ jobs:
           done
 
       - name: Set version from naiveproxy tag
-        if: steps.naive.outputs.exists == 'false'
+        if: github.event_name == 'workflow_dispatch' || steps.naive.outputs.exists == 'false'
         working-directory: src
         env:
           TAG: ${{ steps.naive.outputs.tag }}
@@ -126,7 +126,7 @@ jobs:
           sed -i "s/versionName = \"0.1.0\"/versionName = \"$TAG\"/" app/build.gradle || true
 
       - name: Build APK
-        if: steps.naive.outputs.exists == 'false'
+        if: github.event_name == 'workflow_dispatch' || steps.naive.outputs.exists == 'false'
         working-directory: src
         env:
           GRADLE_OPTS: -Dorg.gradle.daemon=false

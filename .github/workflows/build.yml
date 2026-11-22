@@ -135,13 +135,17 @@ jobs:
           ./gradlew --no-daemon --build-cache assembleDebug
 
       - name: Publish release
-        if: steps.naive.outputs.exists == 'false'
+        # 手动触发时即使 naiveproxy 版本没变也要出包（代码修复需要可安装产物）
+        if: github.event_name == 'workflow_dispatch' || steps.naive.outputs.exists == 'false'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ steps.naive.outputs.tag }}
         run: |
           APK=$(ls src/app/build/outputs/apk/debug/*.apk | head -1)
+          if gh release view "atlantis-$TAG" >/dev/null 2>&1; then
+            gh release delete "atlantis-$TAG" --yes --cleanup-tag
+          fi
           gh release create "atlantis-$TAG" "$APK" \
             --title "Atlantis Android $TAG" \
             --notes "Built from simtelboy/atlantis-android at naiveproxy $TAG. Debug-signed for direct installation."

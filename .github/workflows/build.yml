@@ -24,7 +24,7 @@ jobs:
         run: |
           TAG=$(gh release view -R klzgrad/naiveproxy --json tagName -q .tagName)
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          if gh release view "atlantis-$TAG" >/dev/null 2>&1; then
+          if gh release view "atlantis-$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"

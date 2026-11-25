@@ -140,7 +140,15 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: app-debug
-          path: src/app/build/outputs/apk/debug/*.apk
+          path: src/app/build/outputs/apk/phone/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload car APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-car-debug
+          path: src/app/build/outputs/apk/car/debug/*.apk
           if-no-files-found: error
           retention-days: 14
 
@@ -151,7 +159,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
           TAG: ${{ steps.naive.outputs.tag }}
         run: |
-          APK=$(ls src/app/build/outputs/apk/debug/*.apk | head -1)
+          APK=$(ls src/app/build/outputs/apk/phone/debug/*.apk | head -1)
           gh release create "atlantis-$TAG" "$APK" \
             --title "Atlantis Android $TAG" \
             --notes "Built from simtelboy/atlantis-android at naiveproxy $TAG. Debug-signed for direct installation."

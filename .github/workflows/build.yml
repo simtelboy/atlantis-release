@@ -130,6 +130,8 @@ jobs:
         working-directory: src
         env:
           GRADLE_OPTS: -Dorg.gradle.daemon=false
+          VERSION_CODE: ${{ 1540003800 + github.run_number }}
+          VERSION_NAME: 0.1.1-${{ github.run_number }}-i18n
         run: |
           chmod +x gradlew
           ./gradlew --no-daemon --build-cache assembleDebug
@@ -163,3 +165,23 @@ jobs:
           gh release create "atlantis-$TAG" "$APK" \
             --title "Atlantis Android $TAG" \
             --notes "Built from simtelboy/atlantis-android at naiveproxy $TAG. Debug-signed for direct installation."
+
+      - name: Publish rolling android release
+        if: success() && github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -eu
+          PHONE=$(ls src/app/build/outputs/apk/phone/debug/*.apk | head -1)
+          CAR=$(ls src/app/build/outputs/apk/car/debug/*.apk | head -1)
+          META=$(find src/app/build/outputs/apk/phone/debug -name output-metadata.json | head -1)
+          CODE=$(python3 -c "import json,sys;print(json.load(open('$META'))['elements'][0]['versionCode'])")
+          VERSION=$(python3 -c "import json,sys;print(json.load(open('$META'))['elements'][0]['versionName'])")
+          cp "$PHONE" atlantis-phone.apk
+          cp "$CAR" atlantis-car.apk
+          gh release view android-latest >/dev/null 2>&1 ||             gh release create android-latest --prerelease --title "Atlantis Android (rolling)" --notes "rolling"
+          gh release upload android-latest atlantis-phone.apk atlantis-car.apk --clobber
+          gh release edit android-latest --prerelease --title "Atlantis Android (rolling)"             --notes "versionCode=$CODE
+versionName=$VERSION
+Built from simtelboy/atlantis-android."

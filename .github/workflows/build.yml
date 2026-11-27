@@ -127,9 +127,15 @@ jobs:
 
       - name: Compute build version
         if: github.event_name == 'workflow_dispatch' || steps.naive.outputs.exists == 'false'
+        env:
+          TAG: ${{ steps.naive.outputs.tag }}
         run: |
-          echo "VERSION_CODE=$((1540003800 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
-          echo "VERSION_NAME=0.1.1-$GITHUB_RUN_NUMBER-i18n" >> "$GITHUB_ENV"
+          # 版本名保持与 naiveproxy 官方 tag 一致（例如 154.0.8037.49-5）。
+          NAME=${TAG#v}
+          # versionCode 用日期+构建序号递增，供应用内检查更新比较；与官方 tag 解耦。
+          CODE=$(( $(date -u +%Y%m%d) * 100 + GITHUB_RUN_NUMBER % 100 ))
+          echo "VERSION_CODE=$CODE" >> "$GITHUB_ENV"
+          echo "VERSION_NAME=$NAME" >> "$GITHUB_ENV"
 
       - name: Build APK
         if: github.event_name == 'workflow_dispatch' || steps.naive.outputs.exists == 'false'

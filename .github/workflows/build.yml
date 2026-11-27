@@ -180,8 +180,8 @@ jobs:
           VERSION=$(python3 -c "import json,sys;print(json.load(open('$META'))['elements'][0]['versionName'])")
           cp "$PHONE" atlantis-phone.apk
           cp "$CAR" atlantis-car.apk
-          gh release view android-latest >/dev/null 2>&1 ||             gh release create android-latest --prerelease --title "Atlantis Android (rolling)" --notes "rolling"
+          if ! gh release view android-latest >/dev/null 2>&1; then
+            gh release create android-latest --prerelease --title "Atlantis Android (rolling)" --notes "rolling"
+          fi
           gh release upload android-latest atlantis-phone.apk atlantis-car.apk --clobber
-          gh release edit android-latest --prerelease --title "Atlantis Android (rolling)"             --notes "versionCode=$CODE
-versionName=$VERSION
-Built from simtelboy/atlantis-android."
+          gh release edit android-latest --prerelease --title "Atlantis Android (rolling)" --notes "versionCode=$CODE versionName=$VERSION built from simtelboy/atlantis-android"

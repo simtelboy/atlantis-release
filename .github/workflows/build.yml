@@ -125,13 +125,17 @@ jobs:
           sed -i "s/versionName = \"0.1.0\"/versionName = \"$TAG\"/" app/build.gradle.kts || true
           sed -i "s/versionName = \"0.1.0\"/versionName = \"$TAG\"/" app/build.gradle || true
 
+      - name: Compute build version
+        if: github.event_name == 'workflow_dispatch' || steps.naive.outputs.exists == 'false'
+        run: |
+          echo "VERSION_CODE=$((1540003800 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+          echo "VERSION_NAME=0.1.1-$GITHUB_RUN_NUMBER-i18n" >> "$GITHUB_ENV"
+
       - name: Build APK
         if: github.event_name == 'workflow_dispatch' || steps.naive.outputs.exists == 'false'
         working-directory: src
         env:
           GRADLE_OPTS: -Dorg.gradle.daemon=false
-          VERSION_CODE: ${{ 1540003800 + github.run_number }}
-          VERSION_NAME: 0.1.1-${{ github.run_number }}-i18n
         run: |
           chmod +x gradlew
           ./gradlew --no-daemon --build-cache assembleDebug
